@@ -8,7 +8,7 @@ Every component is measured on public benchmarks. CI fails the build if quality 
 [![CI](https://github.com/urmeo/NexusRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/urmeo/NexusRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-318-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-322-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-66%25-green.svg)](tests/)
 [![Typed](https://img.shields.io/badge/mypy-strict-blue.svg)](pyproject.toml)
 
@@ -177,7 +177,7 @@ Every push reruns a deterministic vendored sample (50 queries, 651 abstracts, 60
 | Faithfulness ROC-AUC — NLI | 0.752 | 0.737 |
 | Faithfulness ROC-AUC — cross-encoder | 0.774 | 0.759 |
 
-Same CI: 318 tests on Python 3.11 & 3.12 · 60% branch-coverage floor · ruff · strict mypy · gitleaks · pip-audit.
+Same CI: 322 tests on Python 3.11 & 3.12 · 60% branch-coverage floor · ruff · strict mypy · gitleaks · pip-audit.
 
 ## Reproduce the benchmark
 

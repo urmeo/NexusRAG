@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,6 +32,7 @@ class DocumentStore:
         self.path.mkdir(parents=True, exist_ok=True)
         self._index_path = self.path / f"{INDEX_STEM}.json"
         self._index: dict[str, dict[str, Any]] | None = None
+        self._index_lock = threading.Lock()
 
     def _validate_doc_id(self, doc_id: str) -> str:
         """Validate and sanitize document ID to prevent path traversal."""
@@ -56,7 +58,9 @@ class DocumentStore:
     def index(self) -> dict[str, dict[str, Any]]:
         """Lazy load document index."""
         if self._index is None:
-            self._index = self._load_index()
+            with self._index_lock:
+                if self._index is None:
+                    self._index = self._load_index()
         return self._index
 
     def _load_index(self) -> dict[str, dict[str, Any]]:

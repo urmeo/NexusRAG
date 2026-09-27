@@ -322,6 +322,94 @@ class TestMultiFileIngestion:
 
 
 class TestConcurrentWrites:
+    @pytest.mark.parametrize("first_operation", ["ingest", "list_documents"])
+    def test_ingest_during_cold_index_load(
+        self, scinexusrag_instance: NexusRAG, sample_text_file: Path, monkeypatch, first_operation
+    ):
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        rag = scinexusrag_instance
+        rag.vector_store.count()
+        store = rag.document_store
+        load_index = store._load_index
+        index_loaded = threading.Event()
+        release_index = threading.Event()
+        second_started = threading.Event()
+
+        def delayed_load():
+            index = load_index()
+            if not index_loaded.is_set():
+                index_loaded.set()
+                assert release_index.wait(timeout=10)
+            return index
+
+        def second_ingest():
+            second_started.set()
+            return rag.ingest(sample_text_file)
+
+        monkeypatch.setattr(store, "_load_index", delayed_load)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = (
+                pool.submit(rag.ingest, sample_text_file)
+                if first_operation == "ingest"
+                else pool.submit(rag.list_documents)
+            )
+            try:
+                assert index_loaded.wait(timeout=5)
+                second = pool.submit(second_ingest)
+                assert second_started.wait(timeout=5)
+                with pytest.raises(TimeoutError):
+                    second.result(timeout=1)
+            finally:
+                release_index.set()
+            first_result = first.result(timeout=10)
+            results = [second.result(timeout=10)]
+            if first_operation == "ingest":
+                results.append(first_result)
+
+        successful = [result for result in results if result.success]
+        rejected = [result for result in results if not result.success]
+        assert len(successful) == 1
+        if first_operation == "ingest":
+            assert len(rejected) == 1
+            assert rejected[0].error == "Document already exists"
+        else:
+            assert not rejected
+        assert store.count() == 1
+        assert rag.vector_store.count() == successful[0].chunk_count
+        assert rag.bm25.count() == successful[0].chunk_count
+
+    def test_parallel_duplicate_ingest_preserves_document(
+        self, scinexusrag_instance: NexusRAG, sample_text_file: Path, monkeypatch
+    ):
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        rag = scinexusrag_instance
+        rag.vector_store.count()
+        rag.document_store.count()
+        embed = rag.embedder.embed
+        barrier = threading.Barrier(2)
+
+        def simultaneous_embed(*args, **kwargs):
+            result = embed(*args, **kwargs)
+            barrier.wait(timeout=10)
+            return result
+
+        monkeypatch.setattr(rag.embedder, "embed", simultaneous_embed)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(rag.ingest, sample_text_file) for _ in range(2)]
+            results = [future.result(timeout=20) for future in futures]
+
+        successful = [result for result in results if result.success]
+        rejected = [result for result in results if not result.success]
+        assert len(successful) == len(rejected) == 1
+        assert rejected[0].error == "Document already exists"
+        assert rag.document_store.count() == 1
+        assert rag.vector_store.count() == successful[0].chunk_count
+        assert rag.bm25.count() == successful[0].chunk_count
+
     def test_parallel_ingest_keeps_indexes_consistent(
         self, scinexusrag_instance: NexusRAG, temp_data_dir: Path
     ):
@@ -391,6 +479,22 @@ class TestDuplicateDetection:
 
 
 class TestClearOperations:
+    def test_clear_then_reingest_updates_existing_retriever(
+        self, scinexusrag_instance: NexusRAG, sample_text_file: Path
+    ):
+        rag = scinexusrag_instance
+        assert rag.ingest(sample_text_file).success
+        sparse = rag.orchestrator.retriever.base.sparse
+        assert sparse.retrieve("research")
+
+        rag.clear_all()
+        assert not sparse.retrieve("research")
+        result = rag.ingest(sample_text_file)
+
+        assert result.success
+        assert sparse.count() == result.chunk_count
+        assert sparse.retrieve("research")
+
     def test_clear_all_documents(self, scinexusrag_instance: NexusRAG, docs_directory: Path):
         # Ingest multiple documents
         scinexusrag_instance.ingest_directory(docs_directory)

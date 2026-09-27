@@ -120,7 +120,9 @@ class NexusRAG:
     @property
     def document_store(self) -> DocumentStore:
         if self._document_store is None:
-            self._document_store = DocumentStore(path=self.settings.data_dir / "documents")
+            with self._write_lock:
+                if self._document_store is None:
+                    self._document_store = DocumentStore(path=self.settings.data_dir / "documents")
         return self._document_store
 
     @property
@@ -207,15 +209,16 @@ class NexusRAG:
         self, document: ParsedDocument, filename: str, show_progress: bool
     ) -> IngestResult:
         """Chunk, embed, and persist an already-parsed document."""
-        if self.document_store.exists(document.id):
-            return IngestResult(
-                document_id=document.id,
-                filename=filename,
-                chunk_count=0,
-                word_count=document.word_count,
-                success=False,
-                error="Document already exists",
-            )
+        with self._write_lock:
+            if self.document_store.exists(document.id):
+                return IngestResult(
+                    document_id=document.id,
+                    filename=filename,
+                    chunk_count=0,
+                    word_count=document.word_count,
+                    success=False,
+                    error="Document already exists",
+                )
 
         chunks = self.chunker.chunk(document)
         if not chunks:
@@ -233,7 +236,17 @@ class NexusRAG:
             batch_size=self.settings.embedding.batch_size,
             show_progress=show_progress,
         )
-        self._persist(document, chunks, embeddings)
+        with self._write_lock:
+            if self.document_store.exists(document.id):
+                return IngestResult(
+                    document_id=document.id,
+                    filename=filename,
+                    chunk_count=0,
+                    word_count=document.word_count,
+                    success=False,
+                    error="Document already exists",
+                )
+            self._persist(document, chunks, embeddings)
         gc.collect()
 
         return IngestResult(
@@ -355,11 +368,9 @@ class NexusRAG:
         with self._write_lock:
             self.vector_store.clear()
             self.document_store.clear()
-            # Reset the handle directly; touching the property would rebuild the
-            # BM25 index from the store just to throw it away.
+            # Keep the retriever shared with an already-created orchestrator.
             if self._bm25 is not None:
                 self._bm25.clear()
-            self._bm25 = None
 
     def get_stats(self) -> SystemStats:
         """Get system statistics."""
