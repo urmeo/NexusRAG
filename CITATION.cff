@@ -8,8 +8,7 @@ url: "https://github.com/urmeo/NexusRAG"
 repository-code: "https://github.com/urmeo/NexusRAG"
 license: MIT
 authors:
-  - family-names: Bose
-    given-names: Urme
+  - given-names: Urme
     alias: urmeo
 keywords:
   - retrieval-augmented-generation
