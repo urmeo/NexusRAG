@@ -11,7 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [
-    {name = "Urme Bose"}
+    {name = "Urme"}
 ]
 keywords = ["rag", "llm", "scientific-literature", "retrieval-augmented-generation"]
 classifiers = [
